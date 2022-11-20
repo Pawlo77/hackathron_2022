@@ -140,10 +140,11 @@ class LocationPreprocessor:
         self.keep = keep
         self.countries = None
 
-    def download(self, data, root, sep_to=3, notify=100):
+    def download(self, data, root, sep_to=5, notify=100):
         batch_size = int(np.ceil(data.shape[0] / sep_to))
         threads = [None] * sep_to
 
+        os.makedirs(root, exist_ok=True)
         for file in os.listdir(root):
             if file.startswith("location_"):
                 os.remove(os.path.join(root, file))
@@ -151,7 +152,7 @@ class LocationPreprocessor:
         l = 0
         for i in range(sep_to):
             r = min(data.shape[0] - 1, l + batch_size)
-            threads[i] = LocationThread(i, l, r, data, notify, get_file_name)
+            threads[i] = LocationThread(i, l, r, data, notify, root)
             l = r + 1
 
         for thread in threads:
@@ -271,8 +272,8 @@ class XPipeline:
         self.step1 = step1
         self.step2 = step2
 
-    def transform(self, data, root="test_data"):
-        data = self.step1.preprocess(data, root=root)
+    def transform(self, data, root="test_data_loc", **kwargs):
+        data = self.step1.preprocess(data, root=root, **kwargs)
         data = self.step2.transform(data)
 
         return data
@@ -284,7 +285,7 @@ class FinalXPipeline:
         self.pure_pipeline = pure_pipeline
         self.rfe = rfe
 
-    def transform(self, data, root="test_data"):
-        data = self.pure_pipeline.transform(data, root=root)
+    def transform(self, data, **kwargs):
+        data = self.pure_pipeline.transform(data, **kwargs)
         data = self.rfe.transform(data)
         return data
