@@ -130,3 +130,9 @@ dmypy.json
 
 # macos
 .DS_Store
+
+# computed havy project parts
+/pipelines
+/test_data_loc
+/train_data_loc
+/data
