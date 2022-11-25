@@ -68,7 +68,7 @@ if __name__ == "__main__":
             pickle.dump(x_pipeline, file)
         print(f"Generated: x_pipeline_{n_features_to_select}.pkl")
 
-        X_test_cur = x_pipeline.transform(X_test, hot_start=True)
+        X_test_cur = x_pipeline.transform(X_test, hot_start=not_first_time)
         save_data(X_test_cur, f"X_test_{n_features_to_select}.csv")
         print(f"Generated: X_test_{n_features_to_select}.csv")
 
