@@ -7,9 +7,7 @@ from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.linear_model import LogisticRegression
-
-from skopt import BayesSearchCV
-from sklearn.model_selection import RepeatedStratifiedKFold
+from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score
 
 
@@ -23,6 +21,7 @@ def report_search(search, name):
             f"Found {name} with best validation score of {search.best_score_}", file=f
         )
         print(f"For params: {search.best_params_}", file=f)
+    print("REPORTED")
 
 
 def save_model(model, name):
@@ -32,7 +31,13 @@ def save_model(model, name):
 
 
 def perform_search(X, y, cv, name, params, estimator):
-    search = BayesSearchCV(estimator=estimator, search_spaces=params, n_jobs=-1, cv=cv)
+    search = GridSearchCV(
+        estimator=estimator,
+        param_grid=params,
+        n_jobs=-1,
+        cv=cv,
+        verbose=1,
+    )
     search.fit(X, y)
     report_search(search, name)
 
@@ -41,9 +46,9 @@ def perform_search(X, y, cv, name, params, estimator):
 
 def create_SVC(X, y, cv, name):
     params = {
-        "C": (1, 100, "log-uniform"),
-        "gamma": (1, 100, "log-uniform"),
-        "degree": (1, 3),
+        "C": [0.2, 0.5, 1, 2, 5],
+        "gamma": ["auto", "scale"],
+        "degree": [2, 3, 5],
         "kernel": ["linear", "poly", "rbf", "sigmoid"],
     }
     return perform_search(X, y, cv, name, params, SVC())
@@ -51,19 +56,25 @@ def create_SVC(X, y, cv, name):
 
 def create_RFC(X, y, cv, name):
     params = {
-        "n_estimators": (1, 1000, "log-uniform"),
+        "n_estimators": (
+            100,
+            250,
+            500,
+            800,
+            1000,
+        ),
         "criterion": ["gini", "entropy", "log_loss"],
-        "max_depth": (3, 6),
+        "max_depth": [3, 5, 8, 10],
     }
     return perform_search(X, y, cv, name, params, RandomForestClassifier())
 
 
 def create_KNN(X, y, cv, name):
     params = {
-        "n_neighbors": (1, 100, "log-uniform"),
+        "n_neighbors": [5, 10, 20, 50],
         "weights": ["distance", "uniform"],
         "algorithm": ["auto", "ball_tree", "kd_tree", "brute"],
-        "leaf_size": (20, 50),
+        "leaf_size": [20, 30, 50],
         "p": [1, 2],
     }
     return perform_search(X, y, cv, name, params, KNeighborsClassifier())
@@ -71,11 +82,21 @@ def create_KNN(X, y, cv, name):
 
 def create_LR(X, y, cv, name):
     params = {
-        "C": (1, 10, "log-uniform"),
+        "C": [0.2, 0.5, 1, 2, 5],
         "penalty": ["l1", "l2", "elasticnet"],
         "solver": ["lbfgs", "sag", "saga"],
     }
     return perform_search(X, y, cv, name, params, LogisticRegression(max_iter=400))
+
+
+def insert_model(model, score, num_attrs, name, best_models, k=3):
+    if len(best_models) < k:
+        best_models.append((model, score, num_attrs, name))
+    else:
+        for i in range(len(best_models)):
+            if best_models[i][1] < score:
+                best_models.insert(i, (model, score, num_attrs, name))
+        return best_models[:k]
 
 
 if __name__ == "__main__":
@@ -84,34 +105,33 @@ if __name__ == "__main__":
 
     y_train = load("y_train.csv").ravel()
     y_test = load("y_test.csv").ravel()
-    cv = RepeatedStratifiedKFold(n_splits=10, n_repeats=3, random_state=1)
+    # cv = RepeatedStratifiedKFold(n_splits=10, n_repeats=3, random_state=1)
 
     models = [
-        (None, None, create_SVC, "SVC"),
-        (None, None, create_RFC, "RandomForestClassifier"),
-        (None, None, create_KNN, "KNeighborsClassifier"),
-        (None, None, create_LR, "LogisticRegression"),
+        (create_KNN, "KNeighborsClassifier"),
+        (create_RFC, "RandomForestClassifier"),
+        (create_LR, "LogisticRegression"),
+        (create_SVC, "SVC"),
     ]
+    best_models = []
 
     for num_attrs in [1000, 2000, 5000]:
         X_train = load(f"X_train_{num_attrs}.csv")
-        X_test = load(f"X_test_{num_attrs}.csv")
 
         for i in range(len(models)):
-            model, score = models[i][2](X_train, y_train, cv, models[i][3])
-
-            if models[i][0] is None or score > models[i][1]:
-                models[i][0] = model
-                models[i][1] = score
+            create, name = models[i]
+            model, score = create(X_train, y_train, 5, name)
+            insert_model(model, score, num_attrs, name, best_models)
 
     with open("models_search_report.txt", "a") as f:
-        for i in range(len(models)):
-            model, name = models[i][0], models[i][3]
+        for model, score, num_attrs, name in range(len(models)):
+            X_test = load(f"X_test_{num_attrs}.csv")
+
             test_scores = model.predict_proba(X_test)
             y_pred = np.argmax(test_scores, axis=0)
 
-            print(f"Scores on training set for model {name}", file=f)
+            print(f"Scores on training set for model {name}_{num_attrs}", file=f)
             for score in (f1_score, precision_score, recall_score, accuracy_score):
-                print(f"\r{str(score)} - {score(y_test, y_pred)}")
+                print(f"\r{str(score)} - {score(y_test, y_pred)}", file=f)
 
-            save_model(model, name)
+            save_model(model, f"{name}_{num_attrs}")
